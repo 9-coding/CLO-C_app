@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Image, ScrollView } from 'react-native';
 import * as Location from 'expo-location';
 import { initializeApp } from 'firebase/app';
 import { getDatabase, ref, set } from 'firebase/database';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import axios from 'axios';
+import { getFirestore, collection, getDocs, query, where } from 'firebase/firestore';
 
 const firebaseConfig = {
     apiKey: "AIzaSyD7jlUzKiSs6oLOMptBnweP8XhrOuiUyZ8",
@@ -18,23 +19,54 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const database = getDatabase(app);
+const db = getFirestore(app);
 
 const API_KEY = 'd5d622b87e057c9805f232ce7a7f8eea';
 
 const HomeScreen = () => {
     const [weatherData, setWeatherData] = useState(null);
     const [location, setLocation] = useState(null);
-    const [previousClothes, setPreviousClothes] = useState([
-        { date: '2023-12-01', image: require('../assets/previous-cloth1.png') },
-        { date: '2023-12-02', image: require('../assets/previous-cloth2.png') },
-        { date: '2023-12-03', image: require('../assets/previous-cloth3.png') },
-        { date: '2023-12-04', image: require('../assets/previous-cloth4.png') },
-        { date: '2023-12-05', image: require('../assets/previous-cloth5.png') },
-    ]);
+
     const [forecastData, setForecastData] = useState([]);
 
+    const childComponentRef = useRef();
+
+    const [data, setData] = useState([]);
+    const [loading, setLoading] = useState(true);
+
     useEffect(() => {
+
+        async function fetchData() {
+            try {
+                const dataCollection = collection(db, 'feedback');
+                const querySnapshot = await getDocs(dataCollection);
+
+                const fetchedData = [];
+                querySnapshot.forEach((doc) => {
+                    fetchedData.push(doc.data());
+                });
+
+                setData(fetchedData);
+                setLoading(false);
+
+                //const q = query(collection(db, 'feedback'), where('feelsLike', '>', weatherData - 100), where('feelsLike', '<', weatherData + 100));
+                const q = query(collection(db, 'feedback'), where('feelsLike', '>', weatherData), where('feelsLike', '<', weatherData));
+                querySnapshot = await getDocs(q);
+
+
+              } catch (error) {
+                console.error('Error fetching data: ', error);
+              }
+        };
+
+        const formatDate = (timestamp) => {
+            if (timestamp instanceof Date) {
+                return timestamp.toISOString(); // Or format it as you prefer
+            } else {
+                return timestamp ? timestamp.toDate().toISOString() : '';
+            }
+        };
+
         const fetchLocationAndWeather = async () => {
             try {
                 let { status } = await Location.requestForegroundPermissionsAsync();
@@ -104,9 +136,10 @@ const HomeScreen = () => {
         };
 
         fetchLocationAndWeather();
+        fetchData();
     }, []);
 
-    // 날씨 아이콘
+    // ���� ������
     const getWeatherIcon = (weatherCondition) => {
         switch (weatherCondition) {
             case 'Clear':
@@ -126,7 +159,7 @@ const HomeScreen = () => {
         }
     };
 
-    // 섭씨 기호
+    // ���� ��ȣ
     const DegreeSymbol = () => <Text>&#176;</Text>;
 
     if (!weatherData) {
@@ -172,8 +205,8 @@ const HomeScreen = () => {
 
     const getWeatherIcon_Forecast = (icon) => `http://openweathermap.org/img/wn/${icon}.png`;
 
-    /////// 수정 필요
-    // 임의로 상하의, 신발 사진 지정함
+    /////// ���� �ʿ�
+    // ���Ƿ� ������, �Ź� ���� ������
     const topImage = require('../assets/top-image.png'); // Replace with the actual path
     const bottomImage = require('../assets/bottom-image.png'); // Replace with the actual path
     const shoesImage = require('../assets/shoes-image.png'); // Replace with the actual path
@@ -184,6 +217,8 @@ const HomeScreen = () => {
             <Text style={styles.previousClothDate}>{item.date}</Text>
         </View>
     );
+
+
     return (
         <View style={styles.container}>
             <View>
@@ -211,7 +246,7 @@ const HomeScreen = () => {
                         <Text>Rain: {weatherData.clouds.all}%</Text>
                         <Text>Humidity: {weatherData.main.humidity}%</Text>
                     </View>
-                    {/* 날씨 예보 */}
+                    {/* ���� ���� */}
                     <View style={styles.forecastContainer}>
                         <ScrollView
                             horizontal
@@ -234,16 +269,26 @@ const HomeScreen = () => {
                     </View>
                 </View>
 
-
-
-                { /*전에 입었던 옷*/}
+                { /*���� �Ծ��� ��*/}
                 <View style={styles.previousClothesContainer}>
                     <ScrollView
                         horizontal
                         showsHorizontalScrollIndicator={false}
                         contentContainerStyle={styles.previousClothesScrollView}
                     >
-                        {previousClothes.map(renderPreviousClothItem)}
+
+
+                    {loading ? (
+                        <Text>Loading...</Text>
+                    ) : (
+                        data.map((item, index) => (
+                            <View key={index}>
+                                <img style={styles.previousClothImage}
+                                    src={item.downloadURL} />
+                                {/* <Text style={styles.previousClothDate}>{item.downloadURL}</Text> */}
+                            </View>
+                        ))
+                    )}
                     </ScrollView>
                 </View>
 
