@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Image } from 'react-native';
+import { View, Text, Image } from 'react-native';
 import { Calendar } from 'react-native-calendars';
-import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { initializeApp } from 'firebase/app';
-import { getDatabase, set } from 'firebase/database';
 import { getFirestore, collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -20,133 +18,106 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-
 const CalendarScreen = () => {
-
     const [selectedDate, setSelectedDate] = useState(null);
     const [data, setData] = useState([]);
-    const [today, setToday] = useState('');
-
+    //const [today, setToday] = useState('');
+    const [markedDates, setMarkedDates] = useState({});
 
     useEffect(() => {
-
         async function fetchData() {
             try {
-                if (selectedDate) {
-                    const startOfDay = new Date(selectedDate);
-                    startOfDay.setHours(0, 0, 0, 0); // Set the time to midnight (0 am)
+                const updatedMarkedDates = {};
+                const q = query(collection(db, 'feedback'));
+                const querySnapshot = await getDocs(q);
 
-                    const endOfDay = new Date(startOfDay);
-                    endOfDay.setDate(endOfDay.getDate() + 1);
-                    endOfDay.setHours(0, 0, 0, 0); // Set the time to midnight (0 am)
-
-                    const q = query(
-                        collection(db, 'feedback'),
-                        where('timestamp', '>=', startOfDay),
-                        where('timestamp', '<', endOfDay)
-                    );
-
-                    const querySnapshot = await getDocs(q);
-
-                    const fetchedData = [];
-                    querySnapshot.forEach((doc) => {
-                        fetchedData.push(doc.data());
-                    });
-
-                    setData(fetchedData);
-                }
-                else {
-                    setData([]);
-                }
+                const fetchedData = [];
+                querySnapshot.forEach((doc) => {
+                    const date = doc.data().timestamp.toDate().toISOString().split('T')[0];
+                    updatedMarkedDates[date] = { marked: true, dotColor: 'gray' };
+                    fetchedData.push(doc.data());
+                });
+                var now = new Date();   // 현재 날짜 및 시간
+                var sevenDaysAgo = new Date(now);
+                sevenDaysAgo.setDate(now.getDate() - 7);   // 7일 전
+                   
+                setData(fetchedData);
+                setMarkedDates(updatedMarkedDates);
             } catch (error) {
                 console.error('Error fetching data: ', error);
             }
-        };
+        }
 
         fetchData();
-    }, [selectedDate]);
+    }, []);
+
+    useEffect(() => {
+        const updatedMarkedDates = {};
+
+        data.forEach((item) => {
+            const date = item.timestamp.toDate().toISOString().split('T')[0];
+            updatedMarkedDates[date] = { marked: true, dotColor: 'gray' };
+        });
+
+        if (selectedDate) {
+            updatedMarkedDates[selectedDate] = {
+                ...updatedMarkedDates[selectedDate],
+                selected: true,
+                selectedColor: 'skyblue',
+            };
+        }
+
+        setMarkedDates(updatedMarkedDates);
+    }, [data, selectedDate]);
 
     const handleDayClick = (day) => {
         setSelectedDate(day.dateString);
     };
+    const filteredData = data.filter(
+        (item) => item.timestamp.toDate().toISOString().split('T')[0] === selectedDate
+    );
 
-    const formatDate = (timestamp) => {
-        if (timestamp instanceof Date) {
-            timestamp.setHours(timestamp.getHours() + 9);
-            return timestamp.toISOString().replace('T', ' ').substring(0, 19);
-            // const day = timestamp.toDate();
-            // var year = day.getFullYear();
-            // var month = ('0' + (day.getMonth() + 1)).slice(-2);
-            // var days = ('0' + day.getDate()).slice(-2);
-            // return year + '-' + month + '-' + days;
-
-        } else {
-        }
-    };
-
-    const DegreeSymbol = () => <Text>&#176;</Text>;
-
-    const markDatesWithImages = () => {
-        const markedDates = {};
-
-        // Mark all dates with images
-        data.forEach((item) => {
-            const date = item.timestamp.toDate().toISOString().split('T')[0];
-            markedDates[date] = { marked: true, dotColor: 'gray' };
-        });
-
-        return markedDates;
-    };
-
-    // ...
-
-    // Mark all dates with images even if no date is selected
-    const allDatesWithImages = markDatesWithImages();
 
     return (
         <View style={{ flex: 1 }}>
             <View style={{ height: 300 }}>
-                <Calendar
-                    onDayPress={handleDayClick}
-                    markedDates={{
-                        ...allDatesWithImages,
-                        [selectedDate]: { selected: true, selectedColor: 'skyblue' }, // Selected date marker
-                    }}
-                />
+                <Calendar onDayPress={handleDayClick} markedDates={markedDates} />
             </View>
 
             <View style={styles.containerWithImages}>
-                {data.length === 0 ? (
+                {filteredData.length === 0 ? (
                     <Text style={styles.noPhotoText}>No photo for the selected date</Text>
                 ) : (
-                    data.map((item, index) => (
-                        <View key={index} style={styles.itemContainer}>
-                            <Image
-                                style={styles.previousClothImage}
-                                source={{ uri: item.downloadURL }}
-                            />
-                            <View style={styles.textContainer}>
-                                <Text style={styles.previousClothData}>
-                                    {item.timestamp instanceof Timestamp
-                                        ? item.timestamp.toDate().toISOString().replace('T', ' ').substring(0, 16)
-                                        : null}
-                                </Text>
-                                <Text style={styles.previousClothData}>{item.weatherDescription}</Text>
-                                <Text style={styles.previousClothData}>
-                                    {item.temperature}
-                                    <DegreeSymbol />C
-                                </Text>
-                                <Text style={styles.previousClothData}>
-                                    {item.temperatureFeedback} / {item.comfortFeedback}
-                                </Text>
-                            </View>
-                        </View>
+                    filteredData.map((item, index) => (
+                        <ImageItem key={index} item={item} />
                     ))
                 )}
             </View>
         </View>
     );
 };
+
+const DegreeSymbol = () => <Text>&#176;</Text>;
+
+const ImageItem = ({ item }) => (
+    <View style={styles.itemContainer}>
+        <Image style={styles.previousClothImage} source={{ uri: item.downloadURL }} />
+        <View style={styles.textContainer}>
+            <Text style={styles.previousClothData}>
+                {item.timestamp instanceof Timestamp
+                    ? item.timestamp.toDate().toISOString().replace('T', ' ').substring(0, 16)
+                    : null}
+            </Text>
+            <Text style={styles.previousClothData}>{item.weatherDescription}</Text>
+            <Text style={styles.previousClothData}>
+                {item.temperature}<DegreeSymbol />C
+            </Text>
+            <Text style={styles.previousClothData}>
+                {item.temperatureFeedback} / {item.comfortFeedback}
+            </Text>
+        </View>
+    </View>
+);
 
 const styles = {
     containerWithImages: {
@@ -180,4 +151,5 @@ const styles = {
         marginBottom: 10,
     },
 };
+
 export default CalendarScreen;
